@@ -38,6 +38,8 @@
 #include "scanner.h"
 #include "pages.h"
 
+extern int failed;
+
 int parent_curr = 0;
 pthread_mutex_t parent_mtx = PTHREAD_MUTEX_INITIALIZER;
 
@@ -94,8 +96,10 @@ int proxy_connect(struct auth_s *credentials) {
 		}
 	} while (i < 0 && ++loop < parent_count);
 
-	if (i < 0 && loop >= parent_count)
-		syslog(LOG_ERR, "No proxy on the list works. You lose.\n");
+	if (i < 0 && loop >= parent_count) {
+		syslog(LOG_ERR, "No proxy on the list works. Marking as failed in the event that fallback is enabled.\n");
+		failed = 1;
+	}
 
 	/*
 	 * We have to invalidate the cached connections if we moved to a different proxy

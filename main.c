@@ -72,6 +72,9 @@
  */
 int debug = 0;					/* all debug printf's and possibly external modules */
 
+int failed = 0;					/* all proxies failed to connect */
+int fallback = 0;				/* if enabled and failed = 1, all requests will go through direct calls */
+
 struct auth_s *g_creds = NULL;			/* throughout the whole module */
 
 int quit = 0;					/* sighandler() */
@@ -177,6 +180,14 @@ int parent_add(char *parent, int port) {
 
 	free(proxy);
 	return 1;
+}
+
+/* Check if fallback mode is to be used */
+bool check_fallback(int fallback, int failed){
+       bool ret = (fallback == 1 && failed == 1);
+       if (ret && debug)
+               printf("\n**fallback to direct\n\n");
+       return ret;
 }
 
 /*
@@ -344,7 +355,7 @@ void *proxy_thread(void *thread_data) {
 
 			keep_alive = hlist_subcmp(request->headers, "Proxy-Connection", "keep-alive");
 
-			if (noproxy_match(request->hostname))
+			if (noproxy_match(request->hostname) || check_fallback(fallback, failed))
 				ret = direct_request(thread_data, request);
 			else
 				ret = forward_request(thread_data, request);
@@ -870,6 +881,9 @@ int main(int argc, char **argv) {
 				help = 1;
 #endif				
 				break;
+			case 'z':
+				fallback = 1;
+				break;
 			case 'h':
 			default:
 				help = 1;
@@ -945,6 +959,7 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "\t-X  <sspi_handle_type>\n"
 				"\t    Use SSPI with specified handle type. Works only under Windows.\n"
 				"\t		Default is negotiate.\n\n");
+		fprintf(stderr, "\t-z  Fallback to direct mode; in case of proxy connect failure, send requests directly without proxy support.\n");
 		exit(1);
 	}
 
@@ -1017,6 +1032,15 @@ int main(int argc, char **argv) {
 		CFG_DEFAULT(cf, "Gateway", tmp, MINIBUF_SIZE);
 		if (!strcasecmp("yes", tmp))
 			gateway = 1;
+		free(tmp);
+
+ 		/*
+  		 * Fallback to direct mode on proxy connect failure
+		 */
+		tmp = new(MINIBUF_SIZE);
+		CFG_DEFAULT(cf, "Fallback", tmp, MINIBUF_SIZE);
+		if (!strcasecmp("yes", tmp))
+			fallback = 1;
 		free(tmp);
 
 		/*
